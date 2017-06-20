@@ -65,6 +65,8 @@ Note! This project is tested currently with NodeJS v7.10.0.
 
 ```
 brew install heroku-cli
+linux ubuntu case (upper case not found): 
+wget -qO- https://cli-assets.heroku.com/install-ubuntu.sh | sh
 ```
 
 #### MongoDB
@@ -189,5 +191,15 @@ git push heroku master
 
 ```
 heroku open
+```
+
+### git
+```
+echo "# tmsg-v4" >> README.md
+  git init
+  git add README.md
+  git commit -m "first commit"
+  git remote add origin https://github.com/tsis-mobile-technology/tmsg-v4.git
+  git push -u origin master
 ```
 
