@@ -8,14 +8,8 @@ import { KakaoSocket } from "./socket";
 
  var Q          = require("q");
  var mysql      = require('mysql');
- var connection = mysql.createConnection({
-  host     : '14.63.213.246',
-  user     : 'smarttest',
-  password : 'test1234',
-  port     : 10003,
-  database : 'SMART_MESSAGE_VERTWO'
-});
 
+// open test
  var pool = mysql.createPool({
     connectionLimit: 10, //important
     host     : '14.63.213.246',
@@ -26,6 +20,13 @@ import { KakaoSocket } from "./socket";
     debug: false
 });
 
+const mtURL = "http://125.132.2.120:30063";
+const mtMessage: string = "<?xml version=\"1.0\" encoding=\"EUC-KR\"?><REQUEST><SEND_TYPE>SMS</SEND_TYPE><MSG_TYPE>TEST</MSG_TYPE><MSG_CONTENTS>TESTMSG</MSG_CONTENTS><SEND_NUMBER>07081883757</SEND_NUMBER><RECV_NUMBER>01089704538</RECV_NUMBER><FGSEND>I</FGSEND><IDSO>1005</IDSO></REQUEST>";
+
+// const mtOptions: SocketIOClient.ConnectOpts = {
+//     forceNew: true,
+//     transports: ["websocket"]
+// };
  var bodyParser = require('body-parser');
 
 
@@ -74,13 +75,6 @@ export class ApiServer {
     private mongo: any;
     private kakao_root: string;
     private kakao_port: number;
-
-    // Bootstrap the application.
-    //20170620
-    //public static bootstrap(): ApiServer {
-    //    console.log("ApiServer bootstrap");
-    //    return new ApiServer();
-    //}
 
     constructor() {
         console.log("Server constructor");
@@ -144,25 +138,18 @@ export class ApiServer {
         this.kakao_app.get('/keyboard', (request: express.Request, result: express.Response, next: express.NextFunction) => {
             var re;
             var content = "keyboard";
-            // try {
-            //     re = depth_First;
-            // } catch (exception) {
-            //     console.log('키보드 에러');
-            // } finally {
-            //     //re.data = result;
-            //     result.status(200).send(re);
-            // }
             try {
                 this.getKeyboardResponse(content, function(err, data) {
                     if(err) {
-                        console.log('응답 에러');
+                        console.log('keyboard:응답 에러');
                     } else {
                         re = data;
                         result.status(200).send(re);
+                        console.log('keyboard:응답 성공');
                     }
                 });
             } catch (exception) {
-                console.log('응답 에러');
+                console.log('keyboard:응답 에러');
             }
 
         });
@@ -178,15 +165,16 @@ export class ApiServer {
             try {
                 this.getMessageResponse(content, user_key, type, function(err, data) {
                     if(err) {
-                        console.log('응답 에러');
+                        console.log('message:응답 에러');
                     } else {
                         re = data;
-                        console.log("response:" + JSON.stringify(re));
+                        // console.log("response:" + JSON.stringify(re));
                         result.status(200).send(re);
+                        console.log('message:응답 성공');
                     }
                 });
             } catch (exception) {
-                console.log('응답 에러');
+                console.log('message:응답 에러');
             }
         });
 
@@ -199,9 +187,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('friend:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('friend:응답 성공');
             }
         });
 
@@ -214,9 +203,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('friend del:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('friend del:응답 성공');
             }
         });
 
@@ -229,9 +219,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('chat_room del:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('chat_room del:응답 성공');
             }
         });
     }
@@ -239,11 +230,7 @@ export class ApiServer {
     private getKeyboardResponse(content: string, callback: any): void {
         var re;
         Q.all([this.dbSelectScenario(content)]).then(function(results){
-            // console.log("results:" + JSON.stringify(results));
             re = results[0][0][0];
-            // console.log("re:" + JSON.stringify(re));
-            // console.log("re.RES_MESSAGE:" + JSON.stringify(re.RES_MESSAGE));
-            // console.log("re.RES_MESSAGE.keyboard):" + JSON.stringify(JSON.parse(re.RES_MESSAGE).keyboard));
         }).then(function() {
             callback(null, JSON.parse(re.RES_MESSAGE).keyboard);
         })
@@ -264,13 +251,12 @@ export class ApiServer {
         if (content == "#") content = "keyboard";
 
         Q.all([this.dbSelectScenario(content),this.dbCheckHistory(content, user_key),this.dbLoadCustomer(user_key),this.dbBeforeSelectScenario(content, user_key),this.dbSelectScenario("keyboard")]).then(function(results){
-            //console.log("results:" + JSON.stringify(results));
             if( results[0][0][0] != null ) {
                 re = results[0][0][0].RES_MESSAGE;
                 nowStep = results[0][0][0].STEP;
                 if( nowStep != '1' ) {
                     var msg = JSON.parse(re);
-                    if( msg.keyboard.buttons.length > 0 ) {
+                    if( msg.keyboard.buttons != null && msg.keyboard.buttons.length > 0 ) {
                         msg.keyboard.buttons.push("처음으로");
                         console.log(msg.keyboard.buttons);
                         re = JSON.stringify(msg);
@@ -356,6 +342,13 @@ console.log("updateType:" + updateType);
                             if( nOTP != null ) {
                                 // 1. send SMS customer phone
                                 // 2. DB Update
+                                // const client = socketIoClient.connect(mtURL, options);
+                                var sendData = this.zeroLeftPad(mtMessage.length, 5) + mtMessage;
+                                var socketClient = socketIoClient(mtURL);
+                                socketClient.on('connect', function() {});
+                                socketClient.on('event', function(sendData) {});
+                                socketClient.on('disconnect', function() {});
+
                                 pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET NAME = ?, YN_AUTH = ?, ETC1 = ? WHERE UNIQUE_ID = ?', [content, "N", nOTP, user_key], function(err, rows, fields) {
                                     if(err) console.log("Query Error:", err);
                                 });
@@ -470,6 +463,12 @@ console.log("updateType:" + updateType);
 
         let kakaoSocket = new KakaoSocket(this.kakao_io);
    }
+ 
+    private zeroLeftPad(num:number, size:number): string {
+        var s = num+"";
+        while (s.length < size) s = "0" + s;
+        return s;
+    }
 
     // Start HTTP server listening
     //20170620
