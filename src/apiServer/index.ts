@@ -343,11 +343,18 @@ console.log("updateType:" + updateType);
                                 // 1. send SMS customer phone
                                 // 2. DB Update
                                 // const client = socketIoClient.connect(mtURL, options);
-                                var sendData = this.zeroLeftPad(mtMessage.length, 5) + mtMessage;
+                                var messageSize = mtMessage.length+"";
+                                while (messageSize.length < 5) messageSize = "0" + messageSize;
+
+                                var sendData = messageSize + mtMessage;
                                 var socketClient = socketIoClient(mtURL);
-                                socketClient.on('connect', function() {});
-                                socketClient.on('event', function(sendData) {});
-                                socketClient.on('disconnect', function() {});
+                                socketClient.connect();
+                                socketClient.send(sendData);
+                                socketClient.disconnect();
+
+                                // socketClient.on('connect', function() {});
+                                // socketClient.on('event', function(sendData) {});
+                                // socketClient.on('disconnect', function() {});
 
                                 pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET NAME = ?, YN_AUTH = ?, ETC1 = ? WHERE UNIQUE_ID = ?', [content, "N", nOTP, user_key], function(err, rows, fields) {
                                     if(err) console.log("Query Error:", err);
@@ -463,12 +470,6 @@ console.log("updateType:" + updateType);
 
         let kakaoSocket = new KakaoSocket(this.kakao_io);
    }
- 
-    private zeroLeftPad(num:number, size:number): string {
-        var s = num+"";
-        while (s.length < size) s = "0" + s;
-        return s;
-    }
 
     // Start HTTP server listening
     //20170620
