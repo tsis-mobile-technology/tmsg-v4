@@ -6,62 +6,33 @@ import * as socketIo from "socket.io";
 
 import { KakaoSocket } from "./socket";
 
- var Q          = require("q");
- var mysql      = require('mysql');
- var connection = mysql.createConnection({
-  host     : '14.63.213.246',
-  user     : 'smarttest',
-  password : 'test1234',
-  port     : 10003,
-  database : 'SMART_MESSAGE_VERTWO'
-});
+var Q      = require("q");
+var mysql  = require('mysql');
+var net = require('net');
+var fastXmlParser = require('fast-xml-parser');
+var validator = require('validator');
+var spawn = require('child_process').spawn;
+
+var options = {
+    attrPrefix: "@_",
+    textNodeName: "#text",
+    ignoreNonTextNodeAttr: true,
+    ignoreTextNodeAttr: true,
+    ignoreNameSpace: true,
+    textNodeConversion: true
+};
 
  var pool = mysql.createPool({
-    connectionLimit: 10, //important
-    host     : '14.63.213.246',
-    user     : 'smarttest',
-    password : 'test1234',
-    port     : 10003,
-    database : 'SMART_MESSAGE_VERTWO',
+    connectionLimit: 2,
+    host: '14.63.213.246',
+    user: 'smarttest',
+    password: 'test1234',
+    port: 10003,
+    database: 'SMART_MESSAGE_VERTWO',
     debug: false
-});
+ });
 
  var bodyParser = require('body-parser');
-
-
- var customer_Info_Name = { 
-                        "message": 
-                            {"text": "문의 사항에 대해서 알림톡으로 회신 예정이며 이를 위해 고객님의 성함을 입력해 주세요.\n 취소하시려면 '#'을 입력해 주세요."},
-                        "keyboard": 
-                            {"type":"text"}
-                        };
- var customer_Info_Phone = { 
-                        "message": 
-                            {"text": "문의 사항에 대해서 알림톡으로 회신 예정이며 이를 위해 고객님의 핸드폰번호를 '-'없이 숫자만 입력해 주세요.\n 취소하시려면 '#'을 입력해 주세요."},
-                        "keyboard": 
-                            {"type":"text"}
-                        };
-
- var customer_Info_Auth = { 
-                        "message": 
-                            {"text": "고객님의 핸드폰번호으로 인증번호를 전달해 드렸습니다. 확인 후 입력을 부탁 드립니다. 숫자만 입력해 주세요.\n 취소하시려면 '#'을 입력해 주세요."},
-                        "keyboard": 
-                            {"type":"text"}
-                        };
-
- var depth_First_Third_Last_Response = {
-                        "message": 
-                            {"text": "문의가 정상적으로 접수되었습니다. 평일 9시~18시, 빠른 시간 안에 답변 드리겠습니다.\n 취소하시려면 '#'을 입력해 주세요."},
-                        "keyboard": 
-                            {"type":"text"}
-                        };
-
- var customer_Info_Auth_Response = {
-                        "message": 
-                            {"text": "요금조회 결과 문제가 없습니다. 다른 문의 사항이 있으시면 '#'을 입력하여주십시요."},
-                        "keyboard": 
-                            {"type":"text"}
-                        };                        
 
 declare var process, __dirname;
 
@@ -74,6 +45,15 @@ export class ApiServer {
     private mongo: any;
     private kakao_root: string;
     private kakao_port: number;
+    private ls: any;
+    //public pool: any;
+    private mtURL: string;
+    private mtIP: string;
+    private mtPort: number;
+    private hpURL: string;
+
+    private IN0002_URL: string;
+    private IN0002_PARAM: string;
 
     // Bootstrap the application.
     //20170620
@@ -116,6 +96,14 @@ export class ApiServer {
         // root path is under ../../target
         this.kakao_root = path.join(path.resolve(__dirname, '../../target'));
 
+
+        this.mtURL = "http://125.132.2.120:30063";
+        this.mtIP = "125.132.2.120";
+        this.mtPort = 30063;
+        this.hpURL = "http://172.16.180.224:30034"; //dev
+        // this.hpURL = "http://172.16.28.27:30034"; //live
+        this.IN0002_URL = "/interface/tbroad/xml_module/CustInvoiceDtlXml";
+        this.IN0002_PARAM = "?KEY_NUM=1234561234567&MONTH_CNT=2&NM_CUST=홍길동&CORP=3200&ID_INSERT=U000000000";
     }
 
     // Configure routes
@@ -252,25 +240,28 @@ export class ApiServer {
 
     private getMessageResponse(content: string, user_key: string, type: string, callback: any): void {
         var re;
-        var beforeRe;
+        var beforeResMessage;
+        var beforeReqMessage;
         var rtnStr;
         var updateType;
         var beforeContent;
         var beforeStep;
         var nowStep;
         var keyboardContent;
+        var systemContent;
         var nOTP;
+        var contentValidation;
 
         if (content == "#") content = "keyboard";
 
-        Q.all([this.dbSelectScenario(content),this.dbCheckHistory(content, user_key),this.dbLoadCustomer(user_key),this.dbBeforeSelectScenario(content, user_key),this.dbSelectScenario("keyboard")]).then(function(results){
+        Q.all([this.dbSelectScenario(content),this.dbCheckHistory(content, user_key),this.dbLoadCustomer(user_key),this.dbBeforeSelectScenario(content, user_key),this.dbSelectScenario("keyboard"),this.dbSelectScenarioSystem("system")]).then(function(results){
             //console.log("results:" + JSON.stringify(results));
             if( results[0][0][0] != null ) {
                 re = results[0][0][0].RES_MESSAGE;
                 nowStep = results[0][0][0].STEP;
                 if( nowStep != '1' ) {
                     var msg = JSON.parse(re);
-                    if( msg.keyboard.buttons.length > 0 ) {
+                    if( msg.keyboard.buttons != null && msg.keyboard.buttons.length > 0 ) {
                         msg.keyboard.buttons.push("처음으로");
                         console.log(msg.keyboard.buttons);
                         re = JSON.stringify(msg);
@@ -289,13 +280,24 @@ export class ApiServer {
                 rtnStr = results[2][0][0];
             else rtnStr = null;
 
-            if( results[3][0][0] != null )
-                beforeRe = results[3][0][0].RES_MESSAGE;
-            else beforeRe = null;
+            if( results[3][0][0] != null ) {
+                beforeResMessage = results[3][0][0].RES_MESSAGE;
+                beforeReqMessage = results[3][0][0].REQ_MESSAGE;
+            }
+            else {
+                beforeResMessage = null;
+                beforeReqMessage = null;
+            }
 
             if( results[4][0][0] != null )
                 keyboardContent = JSON.parse(results[4][0][0].RES_MESSAGE).keyboard;
             else keyboardContent = null;
+
+            if (results[5][0][0] != null) {
+                systemContent = results[5][0];
+            }
+            else
+                systemContent = null;
         }).then(function() {
             // this.dbSaveHistory(content, user_key, type);
             if( re != null ) {
@@ -308,72 +310,150 @@ export class ApiServer {
                 });
             }
         }).then(function() {
-console.log("re:" + re);
-console.log("nowStemp:" + nowStep);   
+  
             if( re == null && content != "keyboard" && content != "처음으로" && content != "취소하기") {
-                if( rtnStr == null) {
-                    updateType = "INS_PHONE";
-                    re = customer_Info_Name;
-                } else if (rtnStr.PHONE == null && rtnStr.NAME == null) {
-                    updateType = "UPD_PHONE";
-                    re = customer_Info_Name;
-                } else if (rtnStr.PHONE != null && rtnStr.NAME == null) {
-                    updateType = "NAME";
-                    re = customer_Info_Auth;
-                } else if (rtnStr.PHONE != null && rtnStr.NAME != null) {
-                    updateType = "AUTH";
-                    re = customer_Info_Auth_Response; //  beforeContent에 해당하는 기간계 정보를 호출한다. (20170615)
-                } 
-             
-console.log("beforeContent:" + beforeContent);
-console.log("beforeStep:" + beforeStep);
-console.log("rtnStr:" + JSON.stringify(rtnStr));
-console.log("content:" + content);
-console.log("updateType:" + updateType);
 
-                // if( updateType == "Init" ) {
-                //     var cust_post = {UNIQUE_ID:user_key};
-                //     pool.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', cust_post, function(err, rows, fields) {
-                //         if(err) console.log("Query Error:", err);
-                //     });
-                // } else 
-                if( updateType == "INS_PHONE" ) {
-                    var cust_post = {UNIQUE_ID:user_key, PHONE:content};
-                    pool.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', cust_post, function(err, rows, fields) {
-                        if(err) console.log("Query Error:", err);
-                    });
-                } else if( updateType == "UPD_PHONE" ) {
-                    pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET PHONE = ?, YN_AUTH = ? WHERE UNIQUE_ID = ?', [content, "N", user_key], function(err, rows, fields) {
-                        if(err) console.log("Query Error:", err);
-                    });
-                } else if( updateType == "NAME" ) {
-                        const spawn = require('child_process').spawn;
-                        const ls = spawn('/home/proidea/workspaceHTML5/tmsg-v3/shorturl');
+                if (rtnStr != null && rtnStr.PHONE != null && rtnStr.NAME != null && rtnStr.YN_AUTH == "Y" ) {
+                    // 메뉴 중에 개인 정보가 필요하건에 대해서는 연동처리 하여 응답한다. 
+                    // 그렇다면 시나리오에 연동이 필요한것인지 필요하다면 URL, Parameter 등등 정보를 관리하여 응답할수 있도록
+                    // 기능 추가
+                    console.log("이어서 합시다!");
+                } else {
+                    // 근데 위 조건에 충족하지 않는다고 해서 무조건 아래와 같은것을 태우는것은 문제가 있다.
+                    // 입력된 "content"가 시나리오에서 못찾을 경우 만 거치도록 추가 수정
+                    // 고객의 가장 최근 이력(히스토리) 메뉴가 본인인증이 되어 있어야 사용가능한지를 시나리오 관리 테이블에서 추가로
+                    // 관리하자.
+                    if( rtnStr == null) {
+                        updateType = "INS_PHONE";
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        re = kakaoSocket.findXml("NAME");
+                        contentValidation = validator.isDecimal(content);
+                        if( contentValidation != true ) { // 숫자 비교해서 같은면
+                            //re = kakaoSocket.findXml("AUTH_OK");
+                            re = kakaoSocket.findXml("NAME_NOK");
+                            updateType = "NAME_NOK";
+                        }
+                    } else if (rtnStr.PHONE == null && rtnStr.NAME == null) {
+                        updateType = "UPD_PHONE";
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        re = kakaoSocket.findXml("NAME");
+                        contentValidation = validator.isDecimal(content);
+                        if( contentValidation != true ) { // 숫자 비교해서 같은면
+                            //re = kakaoSocket.findXml("AUTH_OK");
+                            re = kakaoSocket.findXml("NAME_NOK");
+                            updateType = "NAME_NOK";
+                        }
+                    } else if (rtnStr.PHONE != null && rtnStr.NAME == null) {
+                        updateType = "NAME";
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        re = kakaoSocket.findXml("AUTH");
+                    } else if (rtnStr.PHONE != null && rtnStr.NAME != null && rtnStr.YN_AUTH == "N" && rtnStr.ETC1 == null) {
+                        updateType = "NAME";
+                        //  beforeContent에 해당하는 기간계 정보를 호출한다. (20170615)
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        re = kakaoSocket.findXml("AUTH");
+                    } else if (rtnStr.PHONE != null && rtnStr.NAME != null && rtnStr.YN_AUTH == "N" && rtnStr.ETC1 != null) {
+                        updateType = "AUTH";
+                        //  beforeContent에 해당하는 기간계 정보를 호출한다. (20170615)
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        contentValidation = validator.isDecimal(content);
+                        if( contentValidation == true && content == rtnStr.ETC1 ) { // 숫자 비교해서 같은면
+                            //re = kakaoSocket.findXml("AUTH_OK");
+                            re = beforeResMessage;
+                            updateType = "AUTH_OK";// 인증을 성공하였으면 마지막 메뉴로 자동 이동시켜 원하는 정보를 선택하게 한다.
+                        } else {
+                            re = kakaoSocket.findXml("AUTH_NOK");
+                            updateType = "AUTH_NOK";
+                        }
+                    } else {
+                        let kakaoSocket = new KakaoSocket(systemContent);
+                        re = kakaoSocket.findXml("AUTH_NOK");
+                    }
 
-                        ls.stdout.on('data', (data) => {
-                            console.log(`stdout: ${data}`);
-                            nOTP = data;
-                            if( nOTP != null ) {
-                                // 1. send SMS customer phone
-                                // 2. DB Update
-                                pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET NAME = ?, YN_AUTH = ?, ETC1 = ? WHERE UNIQUE_ID = ?', [content, "N", nOTP, user_key], function(err, rows, fields) {
-                                    if(err) console.log("Query Error:", err);
-                                });
-                            }
+                    if( updateType == "INS_PHONE" ) {
+                        var cust_post = {UNIQUE_ID:user_key, PHONE:content};
+                        pool.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', cust_post, function(err, rows, fields) {
+                            if(err) console.log("Query Error:", err);
                         });
-
-                        ls.stderr.on('data', (data) => {
-                          console.log(`stderr: ${data}`);
-                          // retry ? 
+                    } else if( updateType == "UPD_PHONE" ) {
+                        pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET PHONE = ?, YN_AUTH = ? WHERE UNIQUE_ID = ?', [content, "N", user_key], function(err, rows, fields) {
+                            if(err) console.log("Query Error:", err);
                         });
+                    } else if( updateType == "NAME" ) {
+                            // local case
+                            //this.ls = spawn('/Users/gotaejong/projects/WorkspacesHTML5/tmsg-v3/shorturl');
+                            // linux case
+                            //this.ls = spawn('/home/proidea/workspaceHTML5/tmsg-v3/shorturl');
+                            // tbroad case
+                            this.ls = spawn('/home/icr/tmsg-v3/shorturl');
+                            this.ls.stdout.on('data', (data) => {
+                                console.log(`stdout: ${data}`);
+                                nOTP = data;
+                                if( nOTP != null ) {
+                                    // 1. send SMS customer phone
+                                    // 2. DB Update
+                                    // const client = socketIoClient.connect(mtURL, options);
 
-                        ls.on('close', (code) => {
-                          console.log(`child process exited with code ${code}`);
+                                    // var messageSize = mtMessage.length+"";
+                                    var sendMessage = "<?xml version=\"1.0\" encoding=\"EUC-KR\"?><REQUEST><SEND_TYPE>SMS</SEND_TYPE><MSG_TYPE>TEST</MSG_TYPE><MSG_CONTENTS>" + nOTP + "</MSG_CONTENTS><SEND_NUMBER>07081883757</SEND_NUMBER><RECV_NUMBER>" + rtnStr.PHONE + "</RECV_NUMBER><FGSEND>I</FGSEND><IDSO>1000</IDSO></REQUEST>";
+                                    var messageSize = sendMessage.length + "";
+                                    while (messageSize.length < 5) messageSize = "0" + messageSize;
+
+                                    var sendData = messageSize + sendMessage;
+                                    
+                                    var client = new net.Socket();
+                                    client.connect(this.mtPort, this.mtIP, function () {
+                                        console.log('CONNECTED TO: ' + this.mtIP + ':' + this.mtPort);
+                                        // Write a message to the socket as soon as the client is connected, the server will receive it as message from the client 
+                                        client.write(sendData);
+                                    });
+                                    // Add a 'data' event handler for the client socket
+                                    // data is what the server sent to this socket
+                                    client.on('data', function (data) {
+                                        console.log("data:" + data);
+                                        var str = data;
+                                        // Close the client socket completely
+                                        var res = new String(str.slice(5));
+                                        // res = res.replace(/\\r\\n/g, "");
+                                        if (fastXmlParser.validate(res) === true) {
+                                            var jsonObj = fastXmlParser.parse(res, options);
+                                            var resultObj = JSON.parse(JSON.stringify(jsonObj.REQUEST)).RESULT_MSG;
+                                            // console.log('XMLtoJSON:' + JSON.stringify(jsonObj.REQUEST));
+                                            // console.log('XMLtoJSON:' + JSON.parse(JSON.stringify(jsonObj.REQUEST)).RESULT_CODE);
+                                            // console.log('XMLtoJSON:' + JSON.parse(JSON.stringify(jsonObj.REQUEST)).RESULT_MSG);
+                                            if (resultObj == "SUCCESS") {
+                                                pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET NAME = ?, YN_AUTH = ?, ETC1 = ? WHERE UNIQUE_ID = ?', [content, "N", nOTP, user_key], function (err, rows, fields) {
+                                                    if (err)
+                                                        console.log("Query Error:", err);
+                                                });
+                                            }
+                                        }
+                                        client.destroy();
+                                    });
+                                    // Add a 'close' event handler for the client socket
+                                    client.on('close', function () {
+                                        console.log('Connection closed');
+                                    });
+                                }
+                            });
+
+                            this.ls.stderr.on('data', (data) => {
+                              console.log(`stderr: ${data}`);
+                              // retry ? 
+                            });
+
+                            this.ls.on('close', (code) => {
+                              console.log(`child process exited with code ${code}`);
+                            });
+                    } else if( updateType == "AUTH_OK") {
+                        pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET YN_AUTH = ? WHERE UNIQUE_ID = ?', ["Y", user_key], function(err, rows, fields) {
+                            if(err) console.log("Query Error:", err);
                         });
-                } else if( updateType == "AUTH") {
-                    pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET YN_AUTH = ? WHERE UNIQUE_ID = ?', ["Y", user_key], function(err, rows, fields) {
-                        if(err) console.log("Query Error:", err);
-                    });
+                    } else if( updateType == "AUTH_NOK") {
+                        pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET YN_AUTH = ? WHERE UNIQUE_ID = ?', ["N", user_key], function(err, rows, fields) {
+                            if(err) console.log("Query Error:", err);
+                        });
+                    }
                 }
             }
         }).then(function() {
@@ -401,7 +481,9 @@ console.log("updateType:" + updateType);
                     if (err)
                     console.log('Error while performing Query.', err);
                     });
-                    re = depth_First_Third_Last_Response;
+                    // re = depth_First_Third_Last_Response;
+                    let kakaoSocket = new KakaoSocket(systemContent);
+                    re = kakaoSocket.findXml("QUESTION_OK");
                 } else if (beforeContent == "문의사항만 입력") {
                     /*
                     등록한 사진을 어디론가 옮기고 이력저장하고 
@@ -413,8 +495,10 @@ console.log("updateType:" + updateType);
                     if (err)
                     console.log('Error while performing Query.', err);
                     });
-                    re = depth_First_Third_Last_Response;
-                } else if (beforeContent == "문의하기") {
+                    // re = depth_First_Third_Last_Response;
+                    let kakaoSocket = new KakaoSocket(systemContent);
+                    re = kakaoSocket.findXml("QUESTION_OK");
+                } else if (beforeContent == "티브로드에 문의하기") {
                     /*
                     등록한 사진을 어디론가 옮기고 이력저장하고 
                     */
@@ -425,7 +509,9 @@ console.log("updateType:" + updateType);
                     if (err)
                     console.log('Error while performing Query.', err);
                     });
-                    re = depth_First_Third_Last_Response;
+                    // re = depth_First_Third_Last_Response;
+                    let kakaoSocket = new KakaoSocket(systemContent);
+                    re = kakaoSocket.findXml("QUESTION_OK");
                 } else if ( beforeContent != "keyboard" && beforeStep == '3' ) {
                     re = {
                         "message": 
@@ -441,7 +527,7 @@ console.log("updateType:" + updateType);
                 } 
                     
                 if(re == null ) {
-                    re = beforeRe;
+                    re = beforeResMessage;
                 }
             }
         })
@@ -451,24 +537,13 @@ console.log("updateType:" + updateType);
         })
         .done();
     }
-
-    // Configure databases
-    // private databases(): void {
-    //     console.log("Server database");
-    //     // MongoDB URL
-    //     let mongoDBUrl = process.env.MONGODB_URI || 'mongodb://localhost/chat';
-
-    //     // Get MongoDB handle
-    //     this.mongo = mongoose.connect(mongoDBUrl);
-    // }
     
     // Configure sockets
     private kakaoSockets(): void {
         console.log("Server kakaoSockets");
         // Get socket.io handle
         this.kakao_io = socketIo(this.kakao_server);
-
-        let kakaoSocket = new KakaoSocket(this.kakao_io);
+        // let kakaoSocket = new KakaoSocket(this.kakao_io);
    }
 
     // Start HTTP server listening
@@ -499,25 +574,6 @@ console.log("updateType:" + updateType);
         });
     }
 
-//     private dbSaveCustomer(updateType: string, content: string, user_key: string): void {
-//         var defered = Q.defer();
-// console.log("1");
-//         var post = {UNIQUE_ID:user_key, NAME:content};
-// console.log("2");
-//         console.log("db values:" + JSON.stringify(post));
-// console.log("3");
-//         if( updateType == "Name" ) {
-// console.log("4");
-//             connection.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', post, defered.makeNodeResolver());
-//         } else if( updateType == "Phone" ) {
-//             connection.query('UPDATE TB_AUTOCHAT_CUSTOMER SET PHONE = ? WHERE UNIQUE_ID = ?', [content, user_key], defered.makeNodeResolver());
-//         } else if( updateType == "Auth") {
-//             connection.query('UPDATE TB_AUTOCHAT_CUSTOMER SET AUTH = ? WHERE UNIQUE_ID = ?', ["Y", user_key], defered.makeNodeResolver());
-//         }
-// console.log("5");
-//         return defered.promise;
-//     }
-
     private dbSaveCustomer(updateType: string, content: string, user_key: string): void {
 
         var post = {UNIQUE_ID:user_key, NAME:content};
@@ -537,30 +593,6 @@ console.log("updateType:" + updateType);
         }
     }
 
-    // private dbSaveCustomerName(content: string, user_key: string): void {
-    //     var defered = Q.defer();
-    //     var post = {UNIQUE_ID:user_key, NAME:content};
-    //     console.log("db values:" + JSON.stringify(post));
-    //     connection.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', post, defered.makeNodeResolver());
-    //     return defered.promise;
-    // }
-
-    // private dbSaveCustomerPhone(content: string, user_key: string): void {
-
-    //     connection.query('UPDATE TB_AUTOCHAT_CUSTOMER SET PHONE = ? WHERE UNIQUE_ID = ?', [content, user_key], function(err, rows, fields) {
-    //         if (err)
-    //             console.log('Error while performing Query.', err);
-    //     });
-    // }
-
-    // private dbSaveCustomerAuth(content: string, user_key: string): void {
-
-    //     connection.query('UPDATE TB_AUTOCHAT_CUSTOMER SET AUTH = ? WHERE UNIQUE_ID = ?', ["Y", user_key], function(err, rows, fields) {
-    //         if (err)
-    //             console.log('Error while performing Query.', err);
-    //     });
-    // }
-
     public dbLoadCustomer(user_key: string): void {
         var defered = Q.defer();
 
@@ -572,6 +604,13 @@ console.log("updateType:" + updateType);
         var defered = Q.defer();
         // console.log("content:" + content);
         pool.query('SELECT * FROM TB_AUTOCHAT_SCENARIO WHERE REQ_MESSAGE = ?', content, defered.makeNodeResolver());
+        return defered.promise;
+    }
+
+    private dbSelectScenarioSystem(content: string): void {
+        var defered = Q.defer();
+        // console.log("content:" + content);
+        pool.query('SELECT * FROM TB_AUTOCHAT_SCENARIO WHERE ETC3 = ?', content, defered.makeNodeResolver());
         return defered.promise;
     }
 
@@ -587,17 +626,4 @@ console.log("updateType:" + updateType);
         pool.query('select a.*, b.step, b.trun from TB_AUTOCHAT_HISTORY as a, TB_AUTOCHAT_SCENARIO as b where a.UNIQUE_ID = ? and b.REQ_MESSAGE = a.MESSAGE order by a.wrtdate desc LIMIT 1', [user_key], defered.makeNodeResolver());
         return defered.promise;
     }
-
-    public dbConnection(): void {
-        connection.connect();
-    }
-
-    public dbRelease(): void {
-        connection.end();
-    }
 }
-
-// Bootstrap the server
-//20170620
-//let api = ApiServer.bootstrap();
-//export = api.kakao_app;

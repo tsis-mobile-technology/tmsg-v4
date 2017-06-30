@@ -79,7 +79,9 @@
     "webpack": "2.6.1",
     "webpack-bundle-analyzer": "^2.8.2",
     "webpack-merge": "^4.1.0",
-    "zone.js": "^0.8.12"
+    "zone.js": "^0.8.12", 
+    "fast-xml-parser": "~2.5.0",
+    "validator": "~7.2.0"
   },
   "devDependencies": {
     "@types/webpack": "^2.2.16",
