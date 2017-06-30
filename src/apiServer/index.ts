@@ -6,6 +6,7 @@ import * as socketIo from "socket.io";
 
 import { KakaoSocket } from "./socket";
 
+<<<<<<< HEAD
 var Q      = require("q");
 var mysql  = require('mysql');
 var net = require('net');
@@ -21,7 +22,12 @@ var options = {
     ignoreNameSpace: true,
     textNodeConversion: true
 };
+=======
+ var Q          = require("q");
+ var mysql      = require('mysql');
+>>>>>>> 44f2b310da324ad33f922f5a70cefe872ef89cfc
 
+// open test
  var pool = mysql.createPool({
     connectionLimit: 2,
     host: '14.63.213.246',
@@ -32,6 +38,13 @@ var options = {
     debug: false
  });
 
+const mtURL = "http://125.132.2.120:30063";
+const mtMessage: string = "<?xml version=\"1.0\" encoding=\"EUC-KR\"?><REQUEST><SEND_TYPE>SMS</SEND_TYPE><MSG_TYPE>TEST</MSG_TYPE><MSG_CONTENTS>TESTMSG</MSG_CONTENTS><SEND_NUMBER>07081883757</SEND_NUMBER><RECV_NUMBER>01089704538</RECV_NUMBER><FGSEND>I</FGSEND><IDSO>1005</IDSO></REQUEST>";
+
+// const mtOptions: SocketIOClient.ConnectOpts = {
+//     forceNew: true,
+//     transports: ["websocket"]
+// };
  var bodyParser = require('body-parser');
 
 declare var process, __dirname;
@@ -54,13 +67,6 @@ export class ApiServer {
 
     private IN0002_URL: string;
     private IN0002_PARAM: string;
-
-    // Bootstrap the application.
-    //20170620
-    //public static bootstrap(): ApiServer {
-    //    console.log("ApiServer bootstrap");
-    //    return new ApiServer();
-    //}
 
     constructor() {
         console.log("Server constructor");
@@ -132,25 +138,18 @@ export class ApiServer {
         this.kakao_app.get('/keyboard', (request: express.Request, result: express.Response, next: express.NextFunction) => {
             var re;
             var content = "keyboard";
-            // try {
-            //     re = depth_First;
-            // } catch (exception) {
-            //     console.log('키보드 에러');
-            // } finally {
-            //     //re.data = result;
-            //     result.status(200).send(re);
-            // }
             try {
                 this.getKeyboardResponse(content, function(err, data) {
                     if(err) {
-                        console.log('응답 에러');
+                        console.log('keyboard:응답 에러');
                     } else {
                         re = data;
                         result.status(200).send(re);
+                        console.log('keyboard:응답 성공');
                     }
                 });
             } catch (exception) {
-                console.log('응답 에러');
+                console.log('keyboard:응답 에러');
             }
 
         });
@@ -166,15 +165,16 @@ export class ApiServer {
             try {
                 this.getMessageResponse(content, user_key, type, function(err, data) {
                     if(err) {
-                        console.log('응답 에러');
+                        console.log('message:응답 에러');
                     } else {
                         re = data;
-                        console.log("response:" + JSON.stringify(re));
+                        // console.log("response:" + JSON.stringify(re));
                         result.status(200).send(re);
+                        console.log('message:응답 성공');
                     }
                 });
             } catch (exception) {
-                console.log('응답 에러');
+                console.log('message:응답 에러');
             }
         });
 
@@ -187,9 +187,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('friend:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('friend:응답 성공');
             }
         });
 
@@ -202,9 +203,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('friend del:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('friend del:응답 성공');
             }
         });
 
@@ -217,9 +219,10 @@ export class ApiServer {
             try {
                 re = {text:'param : ' + user_key};
             } catch (exception) {
-                console.log('키보드 에러');
+                console.log('chat_room del:응답 에러');
             } finally {
                 result.status(200).send(re);
+                console.log('chat_room del:응답 성공');
             }
         });
     }
@@ -227,11 +230,7 @@ export class ApiServer {
     private getKeyboardResponse(content: string, callback: any): void {
         var re;
         Q.all([this.dbSelectScenario(content)]).then(function(results){
-            // console.log("results:" + JSON.stringify(results));
             re = results[0][0][0];
-            // console.log("re:" + JSON.stringify(re));
-            // console.log("re.RES_MESSAGE:" + JSON.stringify(re.RES_MESSAGE));
-            // console.log("re.RES_MESSAGE.keyboard):" + JSON.stringify(JSON.parse(re.RES_MESSAGE).keyboard));
         }).then(function() {
             callback(null, JSON.parse(re.RES_MESSAGE).keyboard);
         })
@@ -254,8 +253,12 @@ export class ApiServer {
 
         if (content == "#") content = "keyboard";
 
+<<<<<<< HEAD
         Q.all([this.dbSelectScenario(content),this.dbCheckHistory(content, user_key),this.dbLoadCustomer(user_key),this.dbBeforeSelectScenario(content, user_key),this.dbSelectScenario("keyboard"),this.dbSelectScenarioSystem("system")]).then(function(results){
             //console.log("results:" + JSON.stringify(results));
+=======
+        Q.all([this.dbSelectScenario(content),this.dbCheckHistory(content, user_key),this.dbLoadCustomer(user_key),this.dbBeforeSelectScenario(content, user_key),this.dbSelectScenario("keyboard")]).then(function(results){
+>>>>>>> 44f2b310da324ad33f922f5a70cefe872ef89cfc
             if( results[0][0][0] != null ) {
                 re = results[0][0][0].RES_MESSAGE;
                 nowStep = results[0][0][0].STEP;
@@ -312,6 +315,73 @@ export class ApiServer {
         }).then(function() {
   
             if( re == null && content != "keyboard" && content != "처음으로" && content != "취소하기") {
+<<<<<<< HEAD
+=======
+                if( rtnStr == null) {
+                    updateType = "INS_PHONE";
+                    re = customer_Info_Name;
+                } else if (rtnStr.PHONE == null && rtnStr.NAME == null) {
+                    updateType = "UPD_PHONE";
+                    re = customer_Info_Name;
+                } else if (rtnStr.PHONE != null && rtnStr.NAME == null) {
+                    updateType = "NAME";
+                    re = customer_Info_Auth;
+                } else if (rtnStr.PHONE != null && rtnStr.NAME != null) {
+                    updateType = "AUTH";
+                    re = customer_Info_Auth_Response; //  beforeContent에 해당하는 기간계 정보를 호출한다. (20170615)
+                } 
+             
+console.log("beforeContent:" + beforeContent);
+console.log("beforeStep:" + beforeStep);
+console.log("rtnStr:" + JSON.stringify(rtnStr));
+console.log("content:" + content);
+console.log("updateType:" + updateType);
+
+                // if( updateType == "Init" ) {
+                //     var cust_post = {UNIQUE_ID:user_key};
+                //     pool.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', cust_post, function(err, rows, fields) {
+                //         if(err) console.log("Query Error:", err);
+                //     });
+                // } else 
+                if( updateType == "INS_PHONE" ) {
+                    var cust_post = {UNIQUE_ID:user_key, PHONE:content};
+                    pool.query('INSERT INTO TB_AUTOCHAT_CUSTOMER SET ?', cust_post, function(err, rows, fields) {
+                        if(err) console.log("Query Error:", err);
+                    });
+                } else if( updateType == "UPD_PHONE" ) {
+                    pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET PHONE = ?, YN_AUTH = ? WHERE UNIQUE_ID = ?', [content, "N", user_key], function(err, rows, fields) {
+                        if(err) console.log("Query Error:", err);
+                    });
+                } else if( updateType == "NAME" ) {
+                        const spawn = require('child_process').spawn;
+                        const ls = spawn('/home/proidea/workspaceHTML5/tmsg-v3/shorturl');
+
+                        ls.stdout.on('data', (data) => {
+                            console.log(`stdout: ${data}`);
+                            nOTP = data;
+                            if( nOTP != null ) {
+                                // 1. send SMS customer phone
+                                // 2. DB Update
+                                // const client = socketIoClient.connect(mtURL, options);
+                                var messageSize = mtMessage.length+"";
+                                while (messageSize.length < 5) messageSize = "0" + messageSize;
+
+                                var sendData = messageSize + mtMessage;
+                                var socketClient = socketIoClient(mtURL);
+                                socketClient.connect();
+                                socketClient.send(sendData);
+                                socketClient.disconnect();
+
+                                // socketClient.on('connect', function() {});
+                                // socketClient.on('event', function(sendData) {});
+                                // socketClient.on('disconnect', function() {});
+
+                                pool.query('UPDATE TB_AUTOCHAT_CUSTOMER SET NAME = ?, YN_AUTH = ?, ETC1 = ? WHERE UNIQUE_ID = ?', [content, "N", nOTP, user_key], function(err, rows, fields) {
+                                    if(err) console.log("Query Error:", err);
+                                });
+                            }
+                        });
+>>>>>>> 44f2b310da324ad33f922f5a70cefe872ef89cfc
 
                 if (rtnStr != null && rtnStr.PHONE != null && rtnStr.NAME != null && rtnStr.YN_AUTH == "Y" ) {
                     // 메뉴 중에 개인 정보가 필요하건에 대해서는 연동처리 하여 응답한다. 
